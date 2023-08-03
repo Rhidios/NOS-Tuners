@@ -1,0 +1,7 @@
+URL: https://discord.com/api/oauth2/authorize?client_id=1136458305997389964&permissions=8&scope=bot
+TOKEN: MTEzNjQ1ODMwNTk5NzM4OTk2NA.GkA2UL.yYKyPRZU1X5NGR_QtxcXJwBeZVvJtVy1C-Dwkw (ACTUAL)
+
+Token: MTEzNDIzNTI2NzM2NTA3NzAxMg.GSxWWg.scVpoCG3xSpuLvEW9z9KV87Vm6xGW18HP7obks (Deprecated)
+
+/recibo #Carga el recibo con la informacion requerida
+/mod_actividad #Modifica el numero de entrega actual
