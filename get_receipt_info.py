@@ -55,3 +55,26 @@ def add_sanction(sanction):
         data["sanciones"][user_id] = []
     data["sanciones"][user_id].append(sanction)
     save_sanctions_data(data)
+
+def load_invoice_data():
+    try:
+        with open('invoices.json', 'r') as file:
+            data = json.load(file)
+    except FileNotFoundError:
+        data = {"users": {}}
+    return data
+
+def save_invoice_data(data):
+    with open('invoices.json', 'w') as file:
+        json.dump(data, file, indent=4)
+
+def get_user_invoices(user_id):
+    data = load_invoice_data()
+    user_invoices = data["users"].get(str(user_id), 0)
+    return user_invoices
+
+def increment_user_invoices(user_id):
+    data = load_invoice_data()
+    user_invoices = data["users"].get(str(user_id), 0)
+    data["users"][str(user_id)] = user_invoices + 1
+    save_invoice_data(data)

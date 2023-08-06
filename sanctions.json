@@ -1,3 +1,32 @@
 {
-
+    "sanctions": {
+        "sanctions": {
+            "sanctions": {
+                "436352783852240896": [
+                    {
+                        "Fecha": "2023-08-04T02:46:43.734161",
+                        "Razon": "No reabastecer las cajas en las gr\u00faas.",
+                        "Color": "Sancion Blanca",
+                        "Monto": "$30,000"
+                    }
+                ]
+            },
+            "743699459870949378": [
+                {
+                    "Fecha": "2023-08-04T15:52:05.927916",
+                    "Razon": "No reabastecer las cajas en las gr\u00faas.",
+                    "Color": "Sancion Blanca",
+                    "Monto": "$30,000"
+                }
+            ]
+        },
+        "284153966202322945": [
+            {
+                "Fecha": "2023-08-04T17:52:12.812660",
+                "Razon": "Utilizar la radio de manera irresponsable (OOC / IC).",
+                "Color": "Sancion Amarilla",
+                "Monto": "$50,000"
+            }
+        ]
+    }
 }

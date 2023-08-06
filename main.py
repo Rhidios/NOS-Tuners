@@ -3,24 +3,61 @@ import json
 import asyncio
 import datetime
 
-from discord.ext import commands
+from discord.ext import commands, tasks
 import get_receipt_info
 import sanction_check
 
 
 intents = discord.Intents.all()
 
-TOKEN = "MTEzNDIzNTI2NzM2NTA3NzAxMg.GnxWvG.9scY-X8iyEu-9pGpJH20hrtKH388kCLx5enmCI"
+TOKEN = "MTEzNDIzNTI2NzM2NTA3NzAxMg.GJs33B.mxHAl1fnYO78v_vvNtN_ERrazmN8ayllDKFuM"
 
 intents = discord.Intents().all()
 client = discord.Client(intents = intents)
 bot = commands.Bot(command_prefix='/', intents=intents)
 
+# Dictionary to store messages based on time of day
+messages_by_time = {
+    "00:00": ":wrench: Actividad de **Reparacion Industrial** disponible ahora! @everyone",
+    "01:00": ":wrench: Actividad de **Reparacion en carretera** disponible ahora! @everyone",
+    "02:00": ":wrench: Actividad de **Entrega de Herramientas** disponible ahora! @everyone",
+    "03:00": ":wrench: Actividad de **Reparacion Industrial** disponible ahora! @everyone",
+    "05:00": ":wrench: Actividad de **Entrega de Herramientas** disponible ahora! @everyone",
+    "08:00": ":wrench: Actividad de **Reparacion en Carretera** disponible ahora! @everyone",
+    "11:00": ":wrench: Actividad de **Reparacion Industrial** disponible ahora! @everyone",
+    "13:00": ":wrench: Actividad de **Reparacion en Carretera** disponible ahora! @everyone",
+    "15:00": ":wrench: Actividad de **Entrega de Herramientas** disponible ahora! @everyone",
+    "17:00": ":wrench: Actividad de **Reparacion en Carretera** disponible ahora! @everyone",
+    "18:00": ":wrench: Actividad de **Entrega de Herramientas** y Reparacion en Carretera** disponibles ahora! @everyone",
+    "20:00": ":wrench: Actividad de **Reparacion Industrial** disponible ahora! @everyone",
+    "21:00": ":wrench: Actividad de **Entrega de Herramientas** disponible ahora! @everyone",
+    "22:00": ":wrench: Actividad de **Reparacion en Carretera** disponible ahora! @everyone",
+}
+
+@tasks.loop(minutes=1)  # Check every minute (adjust as needed)
+async def publish_scheduled_messages():
+    channel_id = 1091815853978292229
+    specific_channel = bot.get_channel(channel_id)
+
+    if specific_channel:
+        current_time = datetime.datetime.utcnow().strftime("%H:%M")
+        if current_time in messages_by_time:
+            message_content = messages_by_time[current_time]
+            await specific_channel.send(message_content)
+        else: print("No activity yet.")
+    else:
+        print("Couldn't find the specific channel to publish the message.")
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user.name}')
+    publish_scheduled_messages.start()
+
 
 @bot.event
 async def on_member_join(member):
     channel = bot.get_channel(1091815853776978070) ## Change to NOS Tuners channel id
-    greeting_message = (f"**¡Bienvenido a NOS Tuners!** {member.mention}.",
+    greeting_message = (f"**¡Bienvenido a NOS Tuners!** {member.mention}.\n"
     f"Por favor solicita tu rol de civil en el canal <#1091815853776978071> y utiliza tu nombre IC para acceder al servidor.")
 
     await channel.send(greeting_message)
@@ -107,13 +144,6 @@ async def sancionar(ctx):
     else:
         await ctx.send("No se pudo encontrar el canal específico para publicar la sanción.")
 
-
-    # Delete the prompts after successful application
-    await ctx.message.delete()  # Delete the original command message
-    await user_to_sanction_message.delete()  # Delete the message mentioning the user
-    await reason_prompt.delete()  # Delete the prompt for the reason
-    await chosen_reason_message.delete()  # Delete the message where the user chose the reason
-    await ctx.author.send("Sanción aplicada exitosamente.")  # Send a confirmation message to the server channel
 @bot.command(name='ver_sanciones')
 async def ver_sanciones(ctx, user: discord.Member = None):
     if not user:
@@ -154,33 +184,99 @@ async def update_activity(ctx):
 
 @bot.command(name='ver_recibos')
 @commands.check(get_receipt_info.is_allowed_role)
-async def ver_recibos(ctx, *users: discord.Member):
+async def ver_recibos(ctx, *users):
     allowed_roles = [1133497390247182396, 1133495683270332498, 1091845677455245352, 1091822086848266270, 1136467799900962836]
     if not any(role.id in allowed_roles for role in ctx.author.roles):
         return await ctx.author.send("No tienes permiso para usar este comando.")
 
     if not users:
-        users = [ctx.author]
+        # If no users are provided, assume the author wants to check their own receipts
+        user = ctx.author
+    else:
+        # Check if the first argument is a member mention
+        if len(ctx.message.mentions) > 0:
+            user = ctx.message.mentions[0]
+        else:
+            # If the first argument is not a mention, try to find the user by name (case-insensitive)
+            user_name = " ".join(users)
+            user = discord.utils.find(lambda m: m.display_name.lower() == user_name.lower(), ctx.guild.members)
+            if user is None:
+                return await ctx.send("Usuario no encontrado.")
 
-    for user in users:
-        user_id = user.id
-        receipts_for_user = get_receipt_info.get_receipts_for_user(user_id)
+    user_id = user.id
+    user_invoices = get_receipt_info.get_user_invoices(user_id)
+    await ctx.send(f"Número de recibos para {user.display_name}: {user_invoices}")
 
-        if not receipts_for_user:
-            await ctx.author.send(f"No se encontraron recibos para el usuario con ID {user_id}.")
-            continue
+@bot.command(name='factura')
+async def upload_factura(ctx):
+    user = ctx.author
+    messages_to_delete = []
 
-        await ctx.author.send(f"Recibos para el usuario {user.mention}:")
-        for receipt in receipts_for_user:
-            await ctx.author.send(f"Nombre del empleado: {receipt['Nombre']}")
-            await ctx.author.send(f"Fecha: {receipt['Dia']}")
-            await ctx.author.send(f"Hora: {receipt['Hora']}")
-            await ctx.author.send(f"Cajas restantes: {receipt['Cajas']}")
-            await ctx.author.send(f"Gasolina restante: {receipt['Gasolina']}")
-            await ctx.author.send(f"Actividad semanal: {receipt['Actividad Semanal']}")
-            await ctx.author.send(f"Comprobante: {receipt['Recibo']}")
-            await ctx.author.send("**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**")
+    await ctx.author.send("Sube la imagen del auto antes de la reparacion (adjunta una imagen):")
+    try:
+        before_image = await bot.wait_for('message', timeout=300.0, check=lambda message: message.author == ctx.author and message.attachments)
+        before_image = before_image.attachments[0].url
+    except asyncio.TimeoutError:
+        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
+    await ctx.author.send("Sube la imagen del auto luego de la reparacion (adjunta una imagen):")
+    try:
+        after_image = await bot.wait_for('message', timeout=300.0, check=lambda message: message.author == ctx.author and message.attachments)
+        after_image = after_image.attachments[0].url
+    except asyncio.TimeoutError:
+        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    await ctx.author.send("Ingresa la matricula del auto:")
+    try:
+        car_plate = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        car_plate = car_plate.content
+    except asyncio.TimeoutError:
+        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    get_receipt_info.increment_user_invoices(user.id)
+
+    await ctx.send(f"**Numero de factura de {user.mention}: {get_receipt_info.get_user_invoices(user.id)}**\n"
+                   "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
+                   f"**Matricula del auto: **{car_plate}\n"
+                   "**Imagen antes de la reparacion:**")
+    await ctx.send(before_image)
+    await ctx.send("**Imagen despues de la reparacion:**")
+    await ctx.send(after_image)
+
+    # Delete the command message and prompt messages after the command is done
+    messages_to_delete.append(before_image)
+    messages_to_delete.append(after_image)
+    messages_to_delete.append(car_plate)
+
+    try:
+        await ctx.message.delete()
+    except discord.NotFound:
+        pass
+
+@bot.command(name='ranking')
+async def display_ranking(ctx):
+    # List of role IDs to filter the users
+    role_ids = [1091815852959072301, 1091822638810271885, 1133497390247182396, 1133495683270332498, 1091845677455245352, 1091822086848266270]
+
+    # Filter users to include only those with the specified roles
+    users_with_roles = [user for user in ctx.guild.members if any(role.id in role_ids for role in user.roles)]
+
+    # Create a list to store tuples (user_id, invoice_count)
+    user_invoices_list = [(user.id, get_receipt_info.get_user_invoices(user.id)) for user in users_with_roles]
+
+    # Sort the list in descending order based on invoice count
+    sorted_user_invoices = sorted(user_invoices_list, key=lambda x: x[1], reverse=True)
+
+    # Prepare the ranking message
+    ranking_message = "**Ranking de usuarios por cantidad de facturas:**\n"
+    for idx, (user_id, invoice_count) in enumerate(sorted_user_invoices, start=1):
+        user = ctx.guild.get_member(user_id)
+        if user:
+            # Use user.display_name to get the nickname (server name) of the user
+            ranking_message += f"{idx}. {user.display_name}: {invoice_count} facturas\n"
+
+    # Send the ranking message to the channel
+    await ctx.send(ranking_message)
 
 @bot.command(name='recibo')
 async def subir_recibo(ctx):
@@ -215,10 +311,9 @@ async def subir_recibo(ctx):
             await delete_messages()
             return
 
-    # Send the command message and add it to the list for deletion
-    # messages_to_delete.append(await ctx.author.send("Comando /recibo"))
+    get_receipt_info.increment_user_invoices(ctx.author.id)
 
-    await ctx.author.send(f"**Actividad N°: {activity_number}**")
+    await ctx.author.send(f"**Actividad N°: {activity_number + 1}**")
     activity_number += 1
     get_receipt_info.update_activity_number(activity_number,receipts)
 
@@ -292,15 +387,15 @@ async def subir_recibo(ctx):
 
 
     # Displaying all the information
-    await ctx.send(f"**/ Entrega de herramientas N°: {activity_number}**")
-    await ctx.send("**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**")
-    await ctx.send(f"**/ Nombre del empleado: **{employee_name}")
-    await ctx.send(f"**/ Hora de entrega: **{delivery_time}")
-    await ctx.send(f"**/ Patente grua: **{car_plate}")
-    await ctx.send(f"**/ Gasolina restante: **{remaining_fuel}")
-    await ctx.send(f"**/ Cajas restantes: **{remaining_boxes}")
-    await ctx.send(f"**/ Actividad semanal: **{weekly_activity}")
-    await ctx.send("**/ Comprobante:**")
+    await ctx.send(f"**/ Entrega de herramientas N°: {activity_number}**\n"
+    "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
+    f"**/ Nombre del empleado: **{employee_name}\n"
+    f"**/ Hora de entrega: **{delivery_time}\n"
+    f"**/ Patente grua: **{car_plate}\n"
+    f"**/ Gasolina restante: **{remaining_fuel}\n"
+    f"**/ Cajas restantes: **{remaining_boxes}\n"
+    f"**/ Actividad semanal: **{weekly_activity}\n"
+    "**/ Comprobante:**")
     await ctx.send(receipt_image)
 
     # Delete the command message and prompt messages after the command is done
