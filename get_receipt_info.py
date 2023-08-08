@@ -4,17 +4,40 @@ def get_next_activity_number():
     with open('reciept.json', 'r') as file:
         data = json.load(file)
         activity_number = int(data['actividad_numero'])
-        receipts = data.get('recibos', [])
-    return activity_number, receipts
+    return activity_number
 
-def update_activity_number(activity_number, receipts):
+def update_activity_number(activity_number):
     with open('reciept.json', 'w') as file:
         data = {
             "actividad_numero": activity_number,
-            "recibos": receipts
         }
         json.dump(data, file)
 
+def get_industrial_activity():
+    with open('industrial.json', 'r') as file:
+        data = json.load(file)
+        activity_number = int(data['actividad_numero'])
+    return activity_number
+
+def update_industrial_activity(activity_number):
+    with open('industrial.json', 'w') as file:
+        data = {
+            "actividad_numero": activity_number
+        }
+        json.dump(data, file)
+
+def get_roadfix_activity():
+    with open('roadfix.json', 'r') as file:
+        data = json.load(file)
+        activity_number = int(data['actividad_numero'])
+    return activity_number
+
+def update_roadfix_activity(activity_number):
+    with open('roadfix.json', 'w') as file:
+        data = {
+            "actividad_numero": activity_number
+        }
+        json.dump(data, file)
 
 def get_receipts_for_user(user_id):
     activity_number, receipts = get_next_activity_number()

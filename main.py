@@ -2,56 +2,80 @@ import discord
 import json
 import asyncio
 import datetime
+import os
 
-from discord.ext import commands, tasks
+from discord.ext import commands
 import get_receipt_info
 import sanction_check
 
 
 intents = discord.Intents.all()
 
-TOKEN = "MTEzNDIzNTI2NzM2NTA3NzAxMg.GJs33B.mxHAl1fnYO78v_vvNtN_ERrazmN8ayllDKFuM"
+TOKEN = "MTEzNDIzNTI2NzM2NTA3NzAxMg.GJs33B.mxHAl1fnYO78v_vvNtN_EVRrazmN8ayllDKFuM"
 
 intents = discord.Intents().all()
 client = discord.Client(intents = intents)
 bot = commands.Bot(command_prefix='/', intents=intents)
 
-# Dictionary to store messages based on time of day
+
 messages_by_time = {
-    "00:00": ":wrench: Actividad de **Reparacion Industrial** disponible ahora! @everyone",
-    "01:00": ":wrench: Actividad de **Reparacion en carretera** disponible ahora! @everyone",
-    "02:00": ":wrench: Actividad de **Entrega de Herramientas** disponible ahora! @everyone",
-    "03:00": ":wrench: Actividad de **Reparacion Industrial** disponible ahora! @everyone",
-    "05:00": ":wrench: Actividad de **Entrega de Herramientas** disponible ahora! @everyone",
-    "08:00": ":wrench: Actividad de **Reparacion en Carretera** disponible ahora! @everyone",
-    "11:00": ":wrench: Actividad de **Reparacion Industrial** disponible ahora! @everyone",
-    "13:00": ":wrench: Actividad de **Reparacion en Carretera** disponible ahora! @everyone",
-    "15:00": ":wrench: Actividad de **Entrega de Herramientas** disponible ahora! @everyone",
-    "17:00": ":wrench: Actividad de **Reparacion en Carretera** disponible ahora! @everyone",
-    "18:00": ":wrench: Actividad de **Entrega de Herramientas** y Reparacion en Carretera** disponibles ahora! @everyone",
-    "20:00": ":wrench: Actividad de **Reparacion Industrial** disponible ahora! @everyone",
-    "21:00": ":wrench: Actividad de **Entrega de Herramientas** disponible ahora! @everyone",
-    "22:00": ":wrench: Actividad de **Reparacion en Carretera** disponible ahora! @everyone",
+    "00:00": {"activity": "Reparacion Industrial", "channel_id": 1138166569210491032},
+    "01:00": {"activity": "Reparacion en carretera", "channel_id": 1138166549459517512},
+    "02:00": {"activity": "Entrega de Herramientas", "channel_id": 1091815853978292229},
+    "03:00": {"activity": "Reparacion Industrial", "channel_id": 1138166569210491032},
+    "05:00": {"activity": "Entrega de Herramientas", "channel_id": 1091815853978292229},
+    "08:00": {"activity": "Reparacion en Carretera", "channel_id": 1138166549459517512},
+    "11:00": {"activity": "Reparacion Industrial", "channel_id": 1138166569210491032},
+    "13:00": {"activity": "Reparacion en Carretera", "channel_id": 1138166549459517512},
+    "15:00": {"activity": "Entrega de Herramientas", "channel_id": 1091815853978292229},
+    "17:00": {"activity": "Reparacion en Carretera", "channel_id": 1138166549459517512},
+    "18:00": {"activity": "Entrega de Herramientas", "channel_id": 1091815853978292229},
+    "20:00": {"activity": "Reparacion Industrial", "channel_id": 1138166569210491032},
+    "21:00": {"activity": "Entrega de Herramientas", "channel_id": 1091815853978292229},
+    "22:00": {"activity": "Reparacion en Carretera", "channel_id": 1138166549459517512},
 }
 
-@tasks.loop(minutes=1)  # Check every minute (adjust as needed)
-async def publish_scheduled_messages():
-    channel_id = 1091815853978292229
-    specific_channel = bot.get_channel(channel_id)
+scheduled_messages_running = False
 
-    if specific_channel:
+async def publish_scheduled_messages():
+    global scheduled_messages_running
+    while True:
         current_time = datetime.datetime.utcnow().strftime("%H:%M")
-        if current_time in messages_by_time:
-            message_content = messages_by_time[current_time]
-            await specific_channel.send(message_content)
-        else: print("No activity yet.")
-    else:
-        print("Couldn't find the specific channel to publish the message.")
+        if not scheduled_messages_running:
+            scheduled_messages_running = True
+            current_time = datetime.datetime.utcnow().strftime("%H:%M")
+            if current_time in messages_by_time:
+                activity_info = messages_by_time[current_time]
+                activity_type = activity_info["activity"]
+                channel_id = activity_info["channel_id"]
+
+                specific_channel = bot.get_channel(channel_id)
+                if specific_channel:
+                    message_content = f":wrench: Actividad de **{activity_type}** disponible ahora! @everyone"
+                    await specific_channel.send(message_content)
+                else:
+                    print(f"Couldn't find the specific channel (ID: {channel_id}) to publish the message.")
+
+            # Calculate the time until the next scheduled message (1 minute interval in this example)
+            next_time = (datetime.datetime.utcnow() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+
+            # Calculate the time difference between the current time and the next scheduled time
+            time_difference = (next_time - datetime.datetime.utcnow()).total_seconds()
+
+            # Sleep for the required time until the next scheduled message
+            await asyncio.sleep(time_difference)
+            scheduled_messages_running = False
+
+        else:
+            # If scheduled_messages_running is True, wait for a short duration before checking again
+            await asyncio.sleep(5)
+
 
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
-    publish_scheduled_messages.start()
+    # Start the scheduled messages publishing task
+    bot.loop.create_task(publish_scheduled_messages())
 
 
 @bot.event
@@ -162,46 +186,62 @@ async def ver_sanciones(ctx, user: discord.Member = None):
         await ctx.author.send(f"Monto: {sanction['Monto']}")
         await ctx.author.send("**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**")
 
-@bot.command(name='mod_actividad')
-@commands.check(get_receipt_info.is_allowed_role)
 async def update_activity(ctx):
     allowed_roles = [1133497390247182396, 1133495683270332498, 1091845677455245352, 1091822086848266270, 1136467799900962836]
     if not any(role.id in allowed_roles for role in ctx.author.roles):
         return await ctx.author.send("No tienes permiso para usar este comando.")
 
-    current_activity = get_receipt_info.get_next_activity_number()
-    await ctx.author.send(f"Cual es el numero de actividad correcto?: ")
+    await ctx.author.send("¿Cuál es el nombre del archivo JSON para actualizar la actividad? (Por ejemplo, 'file1.json'):")
     try:
-        new_activity_number = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-        new_activity_number = new_activity_number.content
+        json_file_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        json_file_name = json_file_message.content
     except asyncio.TimeoutError:
         return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
-    get_receipt_info.update_activity_number(new_activity_number)
 
-    await ctx.send(f"Se ha cambiado el numero de actividad de {current_activity} a {new_activity_number}.")
+    # Check if the JSON file exists
+    if not os.path.exists(json_file_name):
+        return await ctx.author.send(f"El archivo JSON '{json_file_name}' no existe.")
+
+    if json_file_name == 'reciept.json':
+        current_activity = get_receipt_info.get_next_activity_number(json_file_name)
+    elif json_file_name == 'industrial.json':
+        current_activity = get_receipt_info.get_industrial_activity(json_file_name)
+    elif json_file_name == 'roadfix.json':
+        current_activity = get_receipt_info.get_roadfix_activity(json_file_name)
+    await ctx.author.send(f"Cual es el numero de actividad correcto en el archivo '{json_file_name}'?: ")
+    try:
+        new_activity_number_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        new_activity_number = new_activity_number_message.content
+    except asyncio.TimeoutError:
+        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+
+    if json_file_name == 'reciept.json': get_receipt_info.update_activity_number(new_activity_number, json_file_name)
+    elif json_file_name == 'industrial.json': get_receipt_info.update_industrial_activity(new_activity_number, json_file_name)
+    elif json_file_name == 'roadfix.json': get_receipt_info.update_roadfix_activity(new_activity_number, json_file_name)
+    else:
+        return await ctx.author.send(f"El archivo JSON '{json_file_name}' no es compatible para actualizar la actividad.")
+
+
+    await ctx.send(f"Se ha cambiado el numero de actividad de {current_activity} a {new_activity_number} en el archivo '{json_file_name}'.")
 
     await ctx.message.delete()
 
 @bot.command(name='ver_recibos')
 @commands.check(get_receipt_info.is_allowed_role)
-async def ver_recibos(ctx, *users):
+async def ver_recibos(ctx, *, user_name=None):
     allowed_roles = [1133497390247182396, 1133495683270332498, 1091845677455245352, 1091822086848266270, 1136467799900962836]
     if not any(role.id in allowed_roles for role in ctx.author.roles):
         return await ctx.author.send("No tienes permiso para usar este comando.")
 
-    if not users:
-        # If no users are provided, assume the author wants to check their own receipts
+    if not user_name:
+        # If no user_name is provided, assume the author wants to check their own receipts
         user = ctx.author
     else:
-        # Check if the first argument is a member mention
-        if len(ctx.message.mentions) > 0:
-            user = ctx.message.mentions[0]
-        else:
-            # If the first argument is not a mention, try to find the user by name (case-insensitive)
-            user_name = " ".join(users)
-            user = discord.utils.find(lambda m: m.display_name.lower() == user_name.lower(), ctx.guild.members)
-            if user is None:
-                return await ctx.send("Usuario no encontrado.")
+        # Try to find the user by name (case-insensitive)
+        user = discord.utils.find(lambda m: m.display_name.lower() == user_name.lower(), ctx.guild.members)
+        if user is None:
+            return await ctx.send("Usuario no encontrado.")
 
     user_id = user.id
     user_invoices = get_receipt_info.get_user_invoices(user_id)
@@ -210,14 +250,7 @@ async def ver_recibos(ctx, *users):
 @bot.command(name='factura')
 async def upload_factura(ctx):
     user = ctx.author
-    messages_to_delete = []
-
-    await ctx.author.send("Sube la imagen del auto antes de la reparacion (adjunta una imagen):")
-    try:
-        before_image = await bot.wait_for('message', timeout=300.0, check=lambda message: message.author == ctx.author and message.attachments)
-        before_image = before_image.attachments[0].url
-    except asyncio.TimeoutError:
-        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+    prompt_responses = []
 
     await ctx.author.send("Sube la imagen del auto luego de la reparacion (adjunta una imagen):")
     try:
@@ -237,16 +270,14 @@ async def upload_factura(ctx):
 
     await ctx.send(f"**Numero de factura de {user.mention}: {get_receipt_info.get_user_invoices(user.id)}**\n"
                    "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
-                   f"**Matricula del auto: **{car_plate}\n"
-                   "**Imagen antes de la reparacion:**")
-    await ctx.send(before_image)
+                   f"**Matricula del auto: **{car_plate}\n")
     await ctx.send("**Imagen despues de la reparacion:**")
     await ctx.send(after_image)
 
     # Delete the command message and prompt messages after the command is done
-    messages_to_delete.append(before_image)
-    messages_to_delete.append(after_image)
-    messages_to_delete.append(car_plate)
+    # prompt_responses.append(before_image)
+    prompt_responses.append(after_image)
+    prompt_responses.append(car_plate)
 
     try:
         await ctx.message.delete()
@@ -278,134 +309,431 @@ async def display_ranking(ctx):
     # Send the ranking message to the channel
     await ctx.send(ranking_message)
 
-@bot.command(name='recibo')
-async def subir_recibo(ctx):
-    activity_number, receipts = get_receipt_info.get_next_activity_number()
+
+@bot.command(name='entrega')
+async def subir_recibo_entrega(ctx):
+    activity_number = get_receipt_info.get_next_activity_number()
     user = ctx.author
-    messages_to_delete = []
+    messages_to_delete = []  # List to keep track of messages to delete
 
-    # Function to check if the user confirms deletion
-    async def confirm_deletion():
-        await ctx.author.send("¿Deseas cargar un recibo? (responde 'si' o 'no')")
-        try:
-            msg = await bot.wait_for('message', timeout=300.0, check=lambda message: message.author == user)
-            return msg.content.lower() == 'no'
-        except asyncio.TimeoutError:
-            await ctx.author.send("Tiempo de espera agotado. El intento se eliminará.")
-            return True
-
+    # Function to delete the messages stored in messages_to_delete list
     async def delete_messages():
         try:
             for message in messages_to_delete:
-                await message.delete()
+                if isinstance(message, discord.Message):
+                    await message.delete()
         except discord.HTTPException:
             pass
 
-    # Check if the user wants to delete the previous attempt
-    if activity_number > 1:
-        if await confirm_deletion():
-            activity_number -= 1
-            get_receipt_info.update_activity_number(activity_number,receipts)
-            await ctx.author.send("El intento anterior ha sido eliminado. Vuelve a comenzar.")
-            messages_to_delete.append(ctx.message)  # Delete the /recibo command message
-            await delete_messages()
-            return
+    get_receipt_info.increment_user_invoices(ctx.author.id)
+
+    activity_number += 1
+    get_receipt_info.update_activity_number(activity_number)
+
+    employee_name_prompt = await ctx.send("**Nombre del empleado (por favor mencionar con @): **")
+    messages_to_delete.append(employee_name_prompt)
+    try:
+        employee_name_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        employee_name = employee_name_message.content
+        messages_to_delete.append(employee_name_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    car_plate_prompt = await ctx.send("**Matricula de la grua: **")
+    messages_to_delete.append(car_plate_prompt)
+    try:
+        car_plate_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        car_plate = car_plate_message.content
+        messages_to_delete.append(car_plate_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    remaining_boxes_prompt = await ctx.send("**Cajas restantes (de 0 a 6): **")
+    messages_to_delete.append(remaining_boxes_prompt)
+    try:
+        remaining_boxes_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        remaining_boxes = int(remaining_boxes_message.content)
+        messages_to_delete.append(remaining_boxes_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    remaining_fuel_prompt = await ctx.send("**Combustible restante (de 0 a 64): **")
+    messages_to_delete.append(remaining_fuel_prompt)
+    try:
+        remaining_fuel_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        remaining_fuel = int(remaining_fuel_message.content)
+        messages_to_delete.append(remaining_fuel_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    delivery_time_prompt = await ctx.send("**Hora de entrega (formato HH:mm): **")
+    messages_to_delete.append(delivery_time_prompt)
+    try:
+        delivery_time_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        delivery_time = delivery_time_message.content
+        messages_to_delete.append(delivery_time_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    weekly_activity_prompt = await ctx.send("**Actividad semanal (de 1 a 100): **")
+    messages_to_delete.append(weekly_activity_prompt)
+    try:
+        weekly_activity_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        weekly_activity = int(weekly_activity_message.content)
+        messages_to_delete.append(weekly_activity_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    receipt_image_prompt = await ctx.send("**Comprobante (por favor adjuntar una imagen): **")
+    messages_to_delete.append(receipt_image_prompt)
+    try:
+        receipt_image_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author and message.attachments)
+        receipt_image = receipt_image_message.attachments[0].url
+        messages_to_delete.append(receipt_image_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    # Displaying all the information
+    specific_channel_id = 1091815853978292229
+    specific_channel = bot.get_channel(specific_channel_id)
+    if specific_channel:
+        await specific_channel.send(f"**/ Entrega de herramientas N°: {activity_number}**\n"
+                                    "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
+                                    f"**/ Nombre del empleado: **{employee_name}\n"
+                                    f"**/ Hora de entrega: **{delivery_time}\n"
+                                    f"**/ Patente grua: **{car_plate}\n"
+                                    f"**/ Gasolina restante: **{remaining_fuel}\n"
+                                    f"**/ Cajas restantes: **{remaining_boxes}\n"
+                                    f"**/ Actividad semanal: **{weekly_activity}\n"
+                                    "**/ Comprobante:**")
+        await specific_channel.send(receipt_image)
+    else:
+        await ctx.send("No se pudo encontrar el canal específico para publicar el recibo.")
+
+    # Call the delete_messages function at the end of the command
+    await delete_messages()
+
+    try:
+        await ctx.message.delete()
+    except discord.NotFound:
+        pass
+
+@bot.command(name='industrial')
+async def subir_recibo_industrial(ctx):
+    activity_number = get_receipt_info.get_industrial_activity()
+    user = ctx.author
+    messages_to_delete = []  # List to keep track of messages to delete
+
+    # Function to delete the messages stored in messages_to_delete list
+    async def delete_messages():
+        try:
+            for message in messages_to_delete:
+                if isinstance(message, discord.Message):
+                    await message.delete()
+        except discord.HTTPException:
+            pass
 
     get_receipt_info.increment_user_invoices(ctx.author.id)
 
-    await ctx.author.send(f"**Actividad N°: {activity_number + 1}**")
     activity_number += 1
-    get_receipt_info.update_activity_number(activity_number,receipts)
+    get_receipt_info.update_industrial_activity(activity_number)
 
-    await ctx.author.send("**Nombre del empleado (por favor mencionar con @): **")
+    employee_name_prompt = await ctx.send("**Nombre del empleado (por favor mencionar con @): **")
+    messages_to_delete.append(employee_name_prompt)
     try:
-        employee_name = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-        employee_name = employee_name.content
+        employee_name_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        employee_name = employee_name_message.content
+        messages_to_delete.append(employee_name_message)
     except asyncio.TimeoutError:
-        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
-    await ctx.author.send("**Matricula de la grua: **")
+    car_plate_prompt = await ctx.send("**Matricula del vehiculo: **")
+    messages_to_delete.append(car_plate_prompt)
     try:
-        car_plate = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-        car_plate = car_plate.content
+        car_plate_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        car_plate = car_plate_message.content
+        messages_to_delete.append(car_plate_message)
     except asyncio.TimeoutError:
-        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
-    await ctx.author.send("**Cajas restantes (de 0 a 6): **")
+    remaining_boxes_prompt = await ctx.send("**Cajas de herramientas restantes (de 0 a 6): **")
+    messages_to_delete.append(remaining_boxes_prompt)
     try:
-        remaining_boxes = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-        remaining_boxes = int(remaining_boxes.content)
+        remaining_boxes_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        remaining_boxes = int(remaining_boxes_message.content)
+        messages_to_delete.append(remaining_boxes_message)
     except asyncio.TimeoutError:
-        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
-    await ctx.author.send("**Combustible restante (de 0 a 64): **")
+    remaining_fuel_prompt = await ctx.send("**Combustible restante (de 0 a 64): **")
+    messages_to_delete.append(remaining_fuel_prompt)
     try:
-        remaining_fuel = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-        remaining_fuel = int(remaining_fuel.content)
+        remaining_fuel_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        remaining_fuel = int(remaining_fuel_message.content)
+        messages_to_delete.append(remaining_fuel_message)
     except asyncio.TimeoutError:
-        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
-    await ctx.author.send("**Hora de entrega (formato HH:mm): **")
+    delivery_time_prompt = await ctx.send("**Hora de entrega (formato HH:mm): **")
+    messages_to_delete.append(delivery_time_prompt)
     try:
-        delivery_time = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-        delivery_time = delivery_time.content
+        delivery_time_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        delivery_time = delivery_time_message.content
+        messages_to_delete.append(delivery_time_message)
     except asyncio.TimeoutError:
-        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
-    await ctx.author.send("**Actividad semanal (de 1 a 100): **")
+    weekly_activity_prompt = await ctx.send("**Actividad semanal (de 1 a 100): **")
+    messages_to_delete.append(weekly_activity_prompt)
     try:
-        weekly_activity = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-        weekly_activity = int(weekly_activity.content)
+        weekly_activity_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        weekly_activity = int(weekly_activity_message.content)
+        messages_to_delete.append(weekly_activity_message)
     except asyncio.TimeoutError:
-        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
-    await ctx.author.send("**Comprobante (por favor adjuntar una imagen): **")
+    receipt_image_prompt = await ctx.send("**Comprobante (por favor adjuntar una imagen): **")
+    messages_to_delete.append(receipt_image_prompt)
     try:
-        receipt_image = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author and message.attachments)
-        receipt_image = receipt_image.attachments[0].url
+        receipt_image_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author and message.attachments)
+        receipt_image = receipt_image_message.attachments[0].url
+        messages_to_delete.append(receipt_image_message)
     except asyncio.TimeoutError:
-        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
-
-    receipt_data = {
-        "UserID": ctx.author.id,  # Store the User ID
-        "Nombre": employee_name,
-        "Dia": str(datetime.datetime.utcnow().date()),  # Store the date in string format
-        "Hora": str(datetime.datetime.utcnow().time())[:8],  # Store the time in string format
-        "Cajas": remaining_boxes,
-        "Gasolina": remaining_fuel,
-        "Actividad Semanal": weekly_activity,
-        "Recibo": receipt_image
-    }
-    receipts.append(receipt_data)
-    with open('reciept.json', 'w') as file:
-        data = {
-            "actividad_numero": activity_number,
-            "recibos": receipts
-        }
-        json.dump(data, file)
-    get_receipt_info.get_next_activity_number()
-
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
     # Displaying all the information
-    await ctx.send(f"**/ Entrega de herramientas N°: {activity_number}**\n"
-    "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
-    f"**/ Nombre del empleado: **{employee_name}\n"
-    f"**/ Hora de entrega: **{delivery_time}\n"
-    f"**/ Patente grua: **{car_plate}\n"
-    f"**/ Gasolina restante: **{remaining_fuel}\n"
-    f"**/ Cajas restantes: **{remaining_boxes}\n"
-    f"**/ Actividad semanal: **{weekly_activity}\n"
-    "**/ Comprobante:**")
-    await ctx.send(receipt_image)
+    specific_channel_id = 1138166569210491032
+    specific_channel = bot.get_channel(specific_channel_id)
+    if specific_channel:
+        await specific_channel.send(f"**/ Entrega de herramientas N°: {activity_number}**\n"
+                                    "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
+                                    f"**/ Nombre del empleado: **{employee_name}\n"
+                                    f"**/ Hora de entrega: **{delivery_time}\n"
+                                    f"**/ Patente vehiculo: **{car_plate}\n"
+                                    f"**/ Gasolina restante: **{remaining_fuel}\n"
+                                    f"**/ Cajas de herramientas restantes: **{remaining_boxes}\n"
+                                    f"**/ Actividad semanal: **{weekly_activity}\n"
+                                    "**/ Comprobante:**")
+        await specific_channel.send(receipt_image)
+    else:
+        await ctx.send("No se pudo encontrar el canal específico para publicar el recibo.")
 
-    # Delete the command message and prompt messages after the command is done
-    messages_to_delete.append(employee_name)
-    messages_to_delete.append(car_plate)
-    messages_to_delete.append(remaining_boxes)
-    messages_to_delete.append(remaining_fuel)
-    messages_to_delete.append(delivery_time)
-    messages_to_delete.append(weekly_activity)
-    messages_to_delete.append(receipt_image)
+    # Call the delete_messages function at the end of the command
+    await delete_messages()
+
+    try:
+        await ctx.message.delete()
+    except discord.NotFound:
+        pass
+
+# async def subir_recibo_industrial(ctx):
+#     activity_number = get_receipt_info.get_next_activity_number()
+#     user = ctx.author
+#     prompt_responses = []
+
+#     # Function to check if the user confirms deletion
+#     async def confirm_deletion():
+#         await ctx.send("¿Deseas cargar un recibo? (responde 'si' o 'no')")
+#         try:
+#             msg = await bot.wait_for('message', timeout=300.0, check=lambda message: message.author == user)
+#             return msg.content.lower() == 'no'
+#         except asyncio.TimeoutError:
+#             await ctx.send("Tiempo de espera agotado. El intento se eliminará.")
+#             return True
+
+#     async def delete_messages():
+#         try:
+#             for message in prompt_responses:
+#                 if isinstance(message, discord.Message):
+#                     await message.delete()
+#         except discord.HTTPException:
+#             pass
+
+#     # Check if the user wants to delete the previous attempt
+#     if activity_number > 1:
+#         if await confirm_deletion():
+#             activity_number -= 1
+#             get_receipt_info.update_activity_number(activity_number)
+#             await ctx.send("El intento anterior ha sido eliminado. Vuelve a comenzar.")
+#             await delete_messages()
+#             return
+
+#     get_receipt_info.increment_user_invoices(ctx.author.id)
+
+#     activity_number += 1
+#     get_receipt_info.update_activity_number(activity_number)
+
+#     nombre = await ctx.send("**Nombre del empleado (por favor mencionar con @): **")
+#     try:
+#         employee_name = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+#         employee_name = employee_name.content
+#     except asyncio.TimeoutError:
+#         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+#     matricula = await ctx.send("**Matricula de la grua: **")
+#     try:
+#         car_plate = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+#         car_plate = car_plate.content
+#     except asyncio.TimeoutError:
+#         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+#     cajas = await ctx.send("**Cajas restantes (de 0 a 6): **")
+#     try:
+#         remaining_boxes = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+#         remaining_boxes = int(remaining_boxes.content)
+#     except asyncio.TimeoutError:
+#         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+#     nafta = await ctx.send("**Combustible restante (de 0 a 64): **")
+#     try:
+#         remaining_fuel = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+#         remaining_fuel = int(remaining_fuel.content)
+#     except asyncio.TimeoutError:
+#         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+#     hora = await ctx.send("**Hora de entrega (formato HH:mm): **")
+#     try:
+#         delivery_time = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+#         delivery_time = delivery_time.content
+#     except asyncio.TimeoutError:
+#         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+#     semanal = await ctx.send("**Actividad semanal (de 1 a 100): **")
+#     try:
+#         weekly_activity = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+#         weekly_activity = int(weekly_activity.content)
+#     except asyncio.TimeoutError:
+#         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+#     foto = await ctx.send("**Comprobante (por favor adjuntar una imagen): **")
+#     try:
+#         receipt_image = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author and message.attachments)
+#         receipt_image = receipt_image.attachments[0].url
+#     except asyncio.TimeoutError:
+#         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+#     # Displaying all the information
+#     await ctx.send(f"**/ Entrega de herramientas N°: {activity_number}**\n"
+#                    "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
+#                    f"**/ Nombre del empleado: **{employee_name}\n"
+#                    f"**/ Hora de entrega: **{delivery_time}\n"
+#                    f"**/ Patente grua: **{car_plate}\n"
+#                    f"**/ Gasolina restante: **{remaining_fuel}\n"
+#                    f"**/ Cajas restantes: **{remaining_boxes}\n"
+#                    f"**/ Actividad semanal: **{weekly_activity}\n"
+#                    "**/ Comprobante:**")
+#     await ctx.send(receipt_image)
+
+#     # Call the delete_messages function at the end of the command
+#     await delete_messages()
+
+#     try:
+#         await ctx.message.delete()
+#     except discord.NotFound:
+#         pass
+
+@bot.command(name='carretera')
+async def subir_recibo_carretera(ctx):
+    activity_number = get_receipt_info.get_roadfix_activity()
+    user = ctx.author
+    messages_to_delete = []  # List to keep track of messages to delete
+
+    # Function to delete the messages stored in messages_to_delete list
+    async def delete_messages():
+        try:
+            for message in messages_to_delete:
+                if isinstance(message, discord.Message):
+                    await message.delete()
+        except discord.HTTPException:
+            pass
+
+    get_receipt_info.increment_user_invoices(ctx.author.id)
+
+    activity_number += 1
+    get_receipt_info.update_roadfix_activity(activity_number)
+
+    employee_name_prompt = await ctx.send("**Nombre del empleado (por favor mencionar con @): **")
+    messages_to_delete.append(employee_name_prompt)
+    try:
+        employee_name_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        employee_name = employee_name_message.content
+        messages_to_delete.append(employee_name_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    car_plate_prompt = await ctx.send("**Matricula del vehiculo: **")
+    messages_to_delete.append(car_plate_prompt)
+    try:
+        car_plate_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        car_plate = car_plate_message.content
+        messages_to_delete.append(car_plate_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    remaining_boxes_prompt = await ctx.send("**Cajas de herramientas restantes (de 0 a 6): **")
+    messages_to_delete.append(remaining_boxes_prompt)
+    try:
+        remaining_boxes_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        remaining_boxes = int(remaining_boxes_message.content)
+        messages_to_delete.append(remaining_boxes_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    remaining_fuel_prompt = await ctx.send("**Combustible restante (de 0 a 64): **")
+    messages_to_delete.append(remaining_fuel_prompt)
+    try:
+        remaining_fuel_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        remaining_fuel = int(remaining_fuel_message.content)
+        messages_to_delete.append(remaining_fuel_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    delivery_time_prompt = await ctx.send("**Hora de entrega (formato HH:mm): **")
+    messages_to_delete.append(delivery_time_prompt)
+    try:
+        delivery_time_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        delivery_time = delivery_time_message.content
+        messages_to_delete.append(delivery_time_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    weekly_activity_prompt = await ctx.send("**Actividad semanal (de 1 a 100): **")
+    messages_to_delete.append(weekly_activity_prompt)
+    try:
+        weekly_activity_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        weekly_activity = int(weekly_activity_message.content)
+        messages_to_delete.append(weekly_activity_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    receipt_image_prompt = await ctx.send("**Comprobante (por favor adjuntar una imagen): **")
+    messages_to_delete.append(receipt_image_prompt)
+    try:
+        receipt_image_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author and message.attachments)
+        receipt_image = receipt_image_message.attachments[0].url
+        messages_to_delete.append(receipt_image_message)
+    except asyncio.TimeoutError:
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    # Displaying all the information
+    specific_channel_id = 1138166569210491032
+    specific_channel = bot.get_channel(specific_channel_id)
+    if specific_channel:
+        await specific_channel.send(f"**/ Entrega de herramientas N°: {activity_number}**\n"
+                                    "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
+                                    f"**/ Nombre del empleado: **{employee_name}\n"
+                                    f"**/ Hora de entrega: **{delivery_time}\n"
+                                    f"**/ Patente vehiculo: **{car_plate}\n"
+                                    f"**/ Gasolina restante: **{remaining_fuel}\n"
+                                    f"**/ Cajas de herramientas restantes: **{remaining_boxes}\n"
+                                    f"**/ Actividad semanal: **{weekly_activity}\n"
+                                    "**/ Comprobante:**")
+        await specific_channel.send(receipt_image)
+    else:
+        await ctx.send("No se pudo encontrar el canal específico para publicar el recibo.")
+
+    # Call the delete_messages function at the end of the command
+    await delete_messages()
 
     try:
         await ctx.message.delete()
@@ -414,3 +742,4 @@ async def subir_recibo(ctx):
 
 
 bot.run(TOKEN)
+
