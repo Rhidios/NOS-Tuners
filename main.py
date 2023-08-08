@@ -11,7 +11,7 @@ import sanction_check
 
 intents = discord.Intents.all()
 
-TOKEN = "MTEzNDIzNTI2NzM2NTA3NzAxMg.G_WHkj.EvQ78nsbY6Ab26p5iGO34bOMHKAGd_V1rzU588"
+TOKEN = "MTEzNDIzNTI2NzM2NTA3NzAxMg.GUgkwX.VvtOwZBh1gyWZLFQanApkxLY4cvDM1onJz3hU"
 
 intents = discord.Intents().all()
 client = discord.Client(intents = intents)
@@ -280,7 +280,7 @@ async def update_activity(ctx):
     elif json_file_name == 'roadfix.json':
         get_receipt_info.update_roadfix_activity(new_activity_number)
 
-    await ctx.send(f"Se ha cambiado el numero de actividad de {current_activity} a {new_activity_number} en el archivo '{json_file_name}'.")
+    await ctx.send(f"Se ha cambiado el numero de actividad de {current_activity} a {new_activity_number}'.")
 
     # Find the last message in the channel that matches the pattern and edit it with the updated activity number
     async for message in ctx.channel.history(limit=None, oldest_first=False):
@@ -289,16 +289,19 @@ async def update_activity(ctx):
             new_message_content = message.content.replace(f"Reparacion en Carretera N°: {current_activity}", f"Reparacion en Carretera N°: {new_activity_number}")
             await message.edit(content=new_message_content)
             break  # Stop looping once we find and edit the message
-        elif f"Reparacion Industrial N°: {current_activity}" in message.content:
+        if f"Reparacion Industrial N°: {current_activity}" in message.content:
+            # Edit the message with the updated activity number
             new_message_content = message.content.replace(f"Reparacion Industrial N°: {current_activity}", f"Reparacion Industrial N°: {new_activity_number}")
             await message.edit(content=new_message_content)
-            break
-        elif f"Reparacion Industrial N°: {current_activity}" in message.content:
-            new_message_content = message.content.replace(f"Entrega de Herramientas N°: {current_activity}", f"Reparacion de Herramientas N°: {new_activity_number}")
+            break  # Stop looping once we find and edit the message
+        if f"Entrega de Herramientas N°: {current_activity}" in message.content:
+            # Edit the message with the updated activity number
+            new_message_content = message.content.replace(f"Entrega de Herramientas N°: {current_activity}", f"Entrega de Herramientas N°: {new_activity_number}")
             await message.edit(content=new_message_content)
-            break
+            break  # Stop looping once we find and edit the message
 
     await ctx.message.delete()
+
 
 @bot.command(name='ver_recibos')
 @commands.check(get_receipt_info.is_allowed_role)
