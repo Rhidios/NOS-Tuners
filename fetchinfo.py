@@ -1,4 +1,6 @@
 import json
+import asyncio
+import datetime
 
 def get_next_activity_number():
     with open('reciept.json', 'r') as file:
@@ -101,3 +103,38 @@ def increment_user_invoices(user_id):
     user_invoices = data["users"].get(str(user_id), 0)
     data["users"][str(user_id)] = user_invoices + 1
     save_invoice_data(data)
+
+def decrease_user_invoices(user_id):
+    data = load_invoice_data()
+    user_invoices = data["users"].get(str(user_id), 0)
+    data["users"][str(user_id)] = user_invoices - 1
+    save_invoice_data(data)
+
+def save_weekly_data(data):
+    with open('user_activity.json', 'w') as file:
+        json.dump(data, file, indent=4)
+
+def load_weekly_data():
+    try:
+        with open('user_activity.json', 'r') as file:
+            data = json.load(file)
+    except FileNotFoundError:
+        data = {"users": {}}
+    return data
+
+def get_user_weekly(user_id):
+    data = load_weekly_data()
+    user_invoices = data["users"].get(str(user_id), 0)
+    return user_invoices
+
+def increment_user_weekly(user_id):
+    data = load_weekly_data()
+    user_invoices = data["users"].get(str(user_id), 0)
+    data["users"][str(user_id)] = user_invoices + 1
+    save_weekly_data(data)
+
+def decrease_user_weekly(user_id):
+    data = load_weekly_data()
+    user_invoices = data["users"].get(str(user_id), 0)
+    data["users"][str(user_id)] = user_invoices - 1
+    save_weekly_data(data)
