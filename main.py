@@ -49,7 +49,7 @@ def clear_activity_data():
         json.dump(data, file, indent=4)
 
 async def send_weekly_top_performers():
-    # Load the data from user_activity.json and other JSON file
+    # Load the data from user_activity.json and invoices.json JSON file
     user_weekly_data = fetchinfo.load_weekly_data()
     user_all_data = fetchinfo.load_invoice_data()  # Replace with the actual function to load the other JSON file
 
