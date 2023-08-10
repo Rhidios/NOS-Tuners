@@ -11,7 +11,7 @@ import sanctioncheck
 
 intents = discord.Intents.all()
 
-TOKEN = "MTEzNDIzNTI2NzM2NTA3NzAxMg.G9g3oe.akfMVq2fqVj-XTxVKWcNKuCbv0usj5T36TGe-s"
+TOKEN = "MTEzNDIzNTI2NzM2-WnaQfwGAMxcw"
 
 intents = discord.Intents().all()
 client = discord.Client(intents = intents)
@@ -38,6 +38,11 @@ messages_by_time = {
 scheduled_messages_running = False
 scheduled_messages_lock = asyncio.Lock()
 
+def clear_invoice_data():
+    data = {"users": {}}
+    with open('invoices.json', 'w') as file:
+        json.dump(data, file, indent=4)
+
 async def publish_scheduled_messages():
     global scheduled_messages_running
     while True:
@@ -46,6 +51,12 @@ async def publish_scheduled_messages():
             async with scheduled_messages_lock:
                 if not scheduled_messages_running:  # Double check the flag to avoid race condition
                     scheduled_messages_running = True
+
+                    # Check if it's Saturday at 00:01
+                    if current_time == "00:01" and datetime.datetime.utcnow().weekday() == 5:  # 5 represents Saturday
+                        # Clear the contents of invoices.json
+                        clear_invoice_data()
+
                     if current_time in messages_by_time:
                         activity_info = messages_by_time[current_time]
                         activity_type = activity_info["activity"]
@@ -57,6 +68,10 @@ async def publish_scheduled_messages():
                             await specific_channel.send(message_content)
                         else:
                             print(f"Couldn't find the specific channel (ID: {channel_id}) to publish the message.")
+
+                    # Check if it's Friday at 23:59
+                    if current_time == "23:59" and datetime.datetime.utcnow().weekday() == 4:  # 4 represents Friday
+                        await send_weekly_top_performers()
 
                     # Calculate the time until the next scheduled message (1 minute interval in this example)
                     next_time = (datetime.datetime.utcnow() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
@@ -71,6 +86,38 @@ async def publish_scheduled_messages():
         # If scheduled_messages_running is True or the lock is not acquired, wait for a short duration before checking again
         await asyncio.sleep(5)
 
+async def send_weekly_top_performers():
+    # Load the data from user_activity.json and other JSON file
+    user_weekly_data = fetchinfo.load_weekly_data()
+    user_all_data = fetchinfo.load_invoice_data()  # Replace with the actual function to load the other JSON file
+
+    # Sort user_weekly_data based on activity count
+    sorted_users = sorted(user_weekly_data["users"].items(), key=lambda x: x[1], reverse=True)
+    # Create the top performers message
+    top_performers_message = "Este es el top 3 de los mejores trabajadores de esta semana:\n"
+    for i, (user_id, activity_count) in enumerate(sorted_users[:3]):
+        user = bot.get_user(int(user_id))
+        if user:
+            top_performers_message += f"{i+1}. {user.mention} - {activity_count} actividades\n"
+
+    sorted_users = sorted(user_all_data["users"].items(), key=lambda x: x[1], reverse=True)
+    # Create the top activity users message using user_all_data
+    top_activity_users_message = "Este es el top 3 de las personas que más actividades hicieron:\n"
+    for i, (user_id, activity_count) in enumerate(sorted_users[:3]):
+        user = bot.get_user(int(user_id))
+        if user:
+            top_activity_users_message += f"{i+1}. {user.mention} - {activity_count} actividades\n"
+
+async def reset_weekly_data():
+        while True:
+            now = datetime.datetime.now()
+            if now.weekday() == 5 and now.hour == 0 and now.minute == 5:  # Saturday at 00:10
+                data = {"users": {}}
+                fetchinfo.save_weekly_data(data)
+                print("Weekly data reset successfully.")
+
+            # Sleep for a day (86400 seconds)
+            await asyncio.sleep(86400)
 
 @bot.event
 async def on_ready():
@@ -78,6 +125,8 @@ async def on_ready():
     # Start the scheduled messages publishing task
     bot.loop.create_task(publish_scheduled_messages())
 
+    # Schedule the weekly data reset task
+    bot.loop.create_task(reset_weekly_data())
 
 @bot.event
 async def on_member_join(member):
@@ -169,6 +218,7 @@ async def sancionar(ctx):
     else:
         await ctx.send("No se pudo encontrar el canal específico para publicar la sanción.")
 
+
 @bot.command(name='ver_sanciones')
 async def ver_sanciones(ctx, user: discord.Member = None):
     if not user:
@@ -229,7 +279,7 @@ async def update_activity(ctx):
     elif json_file_name == 'roadfix.json':
         fetchinfo.update_roadfix_activity(new_activity_number)
 
-    await ctx.send(f"Se ha cambiado el numero de actividad de {current_activity} a {new_activity_number}'.")
+    await ctx.send(f"Se ha cambiado el numero de actividad de {current_activity} a {new_activity_number}.")
 
     # Find the last message in the channel that matches the pattern and edit it with the updated activity number
     async for message in ctx.channel.history(limit=None, oldest_first=False):
@@ -272,6 +322,7 @@ async def ver_recibos(ctx, *, user_name=None):
     user_invoices = fetchinfo.get_user_invoices(user_id)
     await ctx.send(f"Número de recibos para {user.display_name}: {user_invoices}")
 
+
 @bot.command(name='factura')
 async def upload_factura(ctx):
     user = ctx.author
@@ -309,6 +360,7 @@ async def upload_factura(ctx):
     except discord.NotFound:
         pass
 
+
 @bot.command(name='ranking')
 async def display_ranking(ctx):
     # List of role IDs to filter the users
@@ -335,11 +387,37 @@ async def display_ranking(ctx):
     await ctx.send(ranking_message)
 
 
+@bot.command(name='semanal')
+async def get_user_activity(ctx):
+    # List of role IDs to filter the users
+    role_ids = [1091815852959072301, 1091822638810271885, 1133497390247182396, 1133495683270332498, 1091845677455245352, 1091822086848266270]
+
+    # Filter users to include only those with the specified roles
+    users_with_roles = [user for user in ctx.guild.members if any(role.id in role_ids for role in user.roles)]
+
+    # Create a list to store tuples (user_id, weekly_count)
+    user_weekly_activity = [(user.id, fetchinfo.get_user_weekly(user.id)) for user in users_with_roles]
+
+    # Sort the list in descending order based on invoice count
+    sorted_user_weekly = sorted(user_weekly_activity, key=lambda x: x[1], reverse=True)
+
+    # Prepare the ranking message
+    weekly_activity_msg = "**Lista de usuarios por actividad semanal:**\n"
+    for idx, (user_id, weekly_count) in enumerate(sorted_user_weekly, start=1):
+        user = ctx.guild.get_member(user_id)
+        if user:
+            # Use user.display_name to get the nickname (server name) of the user
+            weekly_activity_msg += f"{idx}. {user.display_name}: {weekly_count} semanales\n"
+
+    # Send the ranking message to the channel
+    await ctx.send(weekly_activity_msg)
+
+
 @bot.command(name='entrega')
 async def subir_recibo_entrega(ctx):
     activity_number = fetchinfo.get_next_activity_number()
     user = ctx.author
-    messages_to_delete = []  # List to keep track of messages to delete
+    messages_to_delete = [ctx.message]  # List to keep track of messages to delete
 
     # Function to delete the messages stored in messages_to_delete list
     async def delete_messages():
@@ -349,26 +427,6 @@ async def subir_recibo_entrega(ctx):
                     await message.delete()
         except discord.HTTPException:
             pass
-
-    activity_number += 1
-    fetchinfo.update_activity_number(activity_number)
-
-    employee_name_prompt = await ctx.send("**Nombre del empleado (por favor mencionar con @): **")
-    messages_to_delete.append(employee_name_prompt)
-    try:
-        employee_name_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-        employee_name = employee_name_message.content
-        messages_to_delete.append(employee_name_message)
-
-        # Extract mentioned users
-        mentioned_users = employee_name_message.mentions
-
-        # Increment invoices for mentioned users
-        for mentioned_user in mentioned_users:
-            fetchinfo.increment_user_invoices(mentioned_user.id)
-    except asyncio.TimeoutError:
-        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
-
 
     car_plate_prompt = await ctx.send("**Matricula de la grua: **")
     messages_to_delete.append(car_plate_prompt)
@@ -383,19 +441,41 @@ async def subir_recibo_entrega(ctx):
     messages_to_delete.append(remaining_boxes_prompt)
     try:
         remaining_boxes_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        if not remaining_boxes_message.content.isdigit():
+            correction = await ctx.send("Por favor introduce un número válido.")
+            messages_to_delete.append(remaining_boxes_message)
+            messages_to_delete.append(correction)
+            await asyncio.sleep(3)
+            await delete_messages()  # Delete all collected messages
+            return
         remaining_boxes = int(remaining_boxes_message.content)
         messages_to_delete.append(remaining_boxes_message)
     except asyncio.TimeoutError:
-        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        timeout = await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        messages_to_delete.append(timeout)
+        await asyncio.sleep(3)
+        await delete_messages()  # Delete all collected messages
+        return
 
     remaining_fuel_prompt = await ctx.send("**Combustible restante (de 0 a 64): **")
     messages_to_delete.append(remaining_fuel_prompt)
     try:
         remaining_fuel_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        if not remaining_fuel_message.content.isdigit():
+            correction = await ctx.send("Por favor introduce un número válido.")
+            messages_to_delete.append(remaining_fuel_message)
+            messages_to_delete.append(correction)
+            await asyncio.sleep(3)
+            await delete_messages()  # Delete the invalid message
+            return
         remaining_fuel = int(remaining_fuel_message.content)
         messages_to_delete.append(remaining_fuel_message)
     except asyncio.TimeoutError:
-        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        timeout = await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        messages_to_delete.append(timeout)
+        await asyncio.sleep(3)
+        await delete_messages()  # Delete all collected messages
+        return
 
     delivery_time_prompt = await ctx.send("**Hora de entrega (formato HH:mm): **")
     messages_to_delete.append(delivery_time_prompt)
@@ -406,15 +486,6 @@ async def subir_recibo_entrega(ctx):
     except asyncio.TimeoutError:
         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
-    # weekly_activity_prompt = await ctx.send("**Actividad semanal (de 1 a 100): **")
-    # messages_to_delete.append(weekly_activity_prompt)
-    # try:
-    #     weekly_activity_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-    #     weekly_activity = int(weekly_activity_message.content)
-    #     messages_to_delete.append(weekly_activity_message)
-    # except asyncio.TimeoutError:
-    #     return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
-
     receipt_image_prompt = await ctx.send("**Comprobante (por favor adjuntar una imagen): **")
     messages_to_delete.append(receipt_image_prompt)
     try:
@@ -423,48 +494,6 @@ async def subir_recibo_entrega(ctx):
         messages_to_delete.append(receipt_image_message)
     except asyncio.TimeoutError:
         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
-
-    # Displaying all the information
-    specific_channel_id = 1091815853978292229
-    specific_channel = bot.get_channel(specific_channel_id)
-    if specific_channel:
-        await specific_channel.send(f"**/ Entrega de Herramientas N°: {activity_number}**\n"
-                                    "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
-                                    f"**/ Nombre del empleado: **{employee_name}\n"
-                                    f"**/ Hora de entrega: **{delivery_time}\n"
-                                    f"**/ Patente grua: **{car_plate}\n"
-                                    f"**/ Gasolina restante: **{remaining_fuel}\n"
-                                    f"**/ Cajas restantes: **{remaining_boxes}\n"
-                                    "**/ Comprobante:**")
-        await specific_channel.send(receipt_image)
-    else:
-        await ctx.send("No se pudo encontrar el canal específico para publicar el recibo.")
-
-    # Call the delete_messages function at the end of the command
-    await delete_messages()
-
-    try:
-        await ctx.message.delete()
-    except discord.NotFound:
-        pass
-
-@bot.command(name='industrial')
-async def subir_recibo_industrial(ctx):
-    activity_number = fetchinfo.get_industrial_activity()
-    user = ctx.author
-    messages_to_delete = []  # List to keep track of messages to delete
-
-    # Function to delete the messages stored in messages_to_delete list
-    async def delete_messages():
-        try:
-            for message in messages_to_delete:
-                if isinstance(message, discord.Message):
-                    await message.delete()
-        except discord.HTTPException:
-            pass
-
-    activity_number += 1
-    fetchinfo.update_industrial_activity(activity_number)
 
     employee_name_prompt = await ctx.send("**Nombre del empleado (por favor mencionar con @): **")
     messages_to_delete.append(employee_name_prompt)
@@ -478,9 +507,56 @@ async def subir_recibo_industrial(ctx):
 
         # Increment invoices for mentioned users
         for mentioned_user in mentioned_users:
-            fetchinfo.increment_user_invoices(mentioned_user.id)
+                fetchinfo.increment_user_invoices(mentioned_user.id)
+                fetchinfo.increment_user_weekly(mentioned_user.id)
     except asyncio.TimeoutError:
+        fetchinfo.decrease_user_invoices(mentioned_user.id)
+        fetchinfo.decrease_user_weekly(mentioned_user.id)
+        await asyncio.sleep(3)
         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    # Displaying all the information
+    specific_channel_id = 1091815853978292229
+    specific_channel = bot.get_channel(specific_channel_id)
+    if specific_channel:
+        activity_number += 1
+        await specific_channel.send(f"**/ Entrega de Herramientas N°: {activity_number}**\n"
+                                    "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
+                                    f"**/ Nombre del empleado: **{employee_name}\n"
+                                    f"**/ Hora de entrega: **{delivery_time}\n"
+                                    f"**/ Patente grua: **{car_plate}\n"
+                                    f"**/ Gasolina restante: **{remaining_fuel}\n"
+                                    f"**/ Cajas restantes: **{remaining_boxes}\n"
+                                    "**/ Comprobante:**")
+        await specific_channel.send(receipt_image)
+    else:
+        await ctx.send("No se pudo encontrar el canal específico para publicar el recibo.")
+
+
+    fetchinfo.update_activity_number(activity_number)
+
+    # Call the delete_messages function at the end of the command
+    await delete_messages()
+
+    try:
+        await ctx.message.delete()
+    except discord.NotFound:
+        pass
+
+@bot.command(name='industrial')
+async def subir_recibo_industrial(ctx):
+    activity_number = fetchinfo.get_industrial_activity()
+    user = ctx.author
+    messages_to_delete = [ctx.message]  # List to keep track of messages to delete
+
+    # Function to delete the messages stored in messages_to_delete list
+    async def delete_messages():
+        try:
+            for message in messages_to_delete:
+                if isinstance(message, discord.Message):
+                    await message.delete()
+        except discord.HTTPException:
+            pass
 
     car_plate_prompt = await ctx.send("**Matricula del vehiculo: **")
     messages_to_delete.append(car_plate_prompt)
@@ -495,19 +571,41 @@ async def subir_recibo_industrial(ctx):
     messages_to_delete.append(remaining_boxes_prompt)
     try:
         remaining_boxes_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        if not remaining_boxes_message.content.isdigit():
+            correction = await ctx.send("Por favor introduce un número válido.")
+            messages_to_delete.append(remaining_boxes_message)
+            messages_to_delete.append(correction)
+            await asyncio.sleep(3)
+            await delete_messages()  # Delete all collected messages
+            return
         remaining_boxes = int(remaining_boxes_message.content)
         messages_to_delete.append(remaining_boxes_message)
     except asyncio.TimeoutError:
-        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        timeout = await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        messages_to_delete.append(timeout)
+        await asyncio.sleep(3)
+        await delete_messages()  # Delete all collected messages
+        return
 
-    remaining_fuel_prompt = await ctx.send("**Combustible restante (de 0 a 70): **")
+    remaining_fuel_prompt = await ctx.send("**Combustible restante (de 0 a 64): **")
     messages_to_delete.append(remaining_fuel_prompt)
     try:
         remaining_fuel_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        if not remaining_fuel_message.content.isdigit():
+            correction = await ctx.send("Por favor introduce un número válido.")
+            messages_to_delete.append(remaining_fuel_message)
+            messages_to_delete.append(correction)
+            await asyncio.sleep(3)
+            await delete_messages()  # Delete the invalid message
+            return
         remaining_fuel = int(remaining_fuel_message.content)
         messages_to_delete.append(remaining_fuel_message)
     except asyncio.TimeoutError:
-        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        timeout = await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        messages_to_delete.append(timeout)
+        await asyncio.sleep(3)
+        await delete_messages()  # Delete all collected messages
+        return
 
     delivery_time_prompt = await ctx.send("**Hora de entrega (formato HH:mm): **")
     messages_to_delete.append(delivery_time_prompt)
@@ -518,15 +616,6 @@ async def subir_recibo_industrial(ctx):
     except asyncio.TimeoutError:
         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
-    # weekly_activity_prompt = await ctx.send("**Actividad semanal (de 1 a 100): **")
-    # messages_to_delete.append(weekly_activity_prompt)
-    # try:
-    #     weekly_activity_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-    #     weekly_activity = int(weekly_activity_message.content)
-    #     messages_to_delete.append(weekly_activity_message)
-    # except asyncio.TimeoutError:
-    #     return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
-
     receipt_image_prompt = await ctx.send("**Comprobante (por favor adjuntar una imagen): **")
     messages_to_delete.append(receipt_image_prompt)
     try:
@@ -535,6 +624,27 @@ async def subir_recibo_industrial(ctx):
         messages_to_delete.append(receipt_image_message)
     except asyncio.TimeoutError:
         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    employee_name_prompt = await ctx.send("**Nombre del empleado (por favor mencionar con @): **")
+    messages_to_delete.append(employee_name_prompt)
+    try:
+        employee_name_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        employee_name = employee_name_message.content
+        messages_to_delete.append(employee_name_message)
+
+        # Extract mentioned users
+        mentioned_users = employee_name_message.mentions
+
+        # Increment invoices for mentioned users
+        for mentioned_user in mentioned_users:
+                fetchinfo.increment_user_invoices(mentioned_user.id)
+                fetchinfo.increment_user_weekly(mentioned_user.id)
+    except asyncio.TimeoutError:
+        fetchinfo.decrease_user_invoices(mentioned_user.id)
+        fetchinfo.decrease_user_weekly(mentioned_user.id)
+        await asyncio.sleep(3)
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
 
     # Displaying all the information
     specific_channel_id = 1138166569210491032
@@ -552,6 +662,9 @@ async def subir_recibo_industrial(ctx):
     else:
         await ctx.send("No se pudo encontrar el canal específico para publicar el recibo.")
 
+    activity_number += 1
+    fetchinfo.update_industrial_activity(activity_number)
+
     # Call the delete_messages function at the end of the command
     await delete_messages()
 
@@ -564,7 +677,7 @@ async def subir_recibo_industrial(ctx):
 async def subir_recibo_carretera(ctx):
     activity_number = fetchinfo.get_roadfix_activity()
     user = ctx.author
-    messages_to_delete = []  # List to keep track of messages to delete
+    messages_to_delete = [ctx.message]  # List to keep track of messages to delete
 
     # Function to delete the messages stored in messages_to_delete list
     async def delete_messages():
@@ -574,25 +687,6 @@ async def subir_recibo_carretera(ctx):
                     await message.delete()
         except discord.HTTPException:
             pass
-
-    activity_number += 1
-    fetchinfo.update_roadfix_activity(activity_number)
-
-    employee_name_prompt = await ctx.send("**Nombre del empleado (por favor mencionar con @): **")
-    messages_to_delete.append(employee_name_prompt)
-    try:
-        employee_name_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-        employee_name = employee_name_message.content
-        messages_to_delete.append(employee_name_message)
-
-        # Extract mentioned users
-        mentioned_users = employee_name_message.mentions
-
-        # Increment invoices for mentioned users
-        for mentioned_user in mentioned_users:
-            fetchinfo.increment_user_invoices(mentioned_user.id)
-    except asyncio.TimeoutError:
-        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
     car_plate_prompt = await ctx.send("**Matricula del vehiculo: **")
     messages_to_delete.append(car_plate_prompt)
@@ -607,19 +701,41 @@ async def subir_recibo_carretera(ctx):
     messages_to_delete.append(remaining_boxes_prompt)
     try:
         remaining_boxes_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        if not remaining_boxes_message.content.isdigit():
+            correction = await ctx.send("Por favor introduce un número válido.")
+            messages_to_delete.append(remaining_boxes_message)
+            messages_to_delete.append(correction)
+            await asyncio.sleep(3)
+            await delete_messages()  # Delete all collected messages
+            return
         remaining_boxes = int(remaining_boxes_message.content)
         messages_to_delete.append(remaining_boxes_message)
     except asyncio.TimeoutError:
-        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        timeout = await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        messages_to_delete.append(timeout)
+        await asyncio.sleep(3)
+        await delete_messages()  # Delete all collected messages
+        return
 
-    remaining_fuel_prompt = await ctx.send("**Combustible restante (de 0 a 70): **")
+    remaining_fuel_prompt = await ctx.send("**Combustible restante (de 0 a 64): **")
     messages_to_delete.append(remaining_fuel_prompt)
     try:
         remaining_fuel_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        if not remaining_fuel_message.content.isdigit():
+            correction = await ctx.send("Por favor introduce un número válido.")
+            messages_to_delete.append(remaining_fuel_message)
+            messages_to_delete.append(correction)
+            await asyncio.sleep(3)
+            await delete_messages()  # Delete the invalid message
+            return
         remaining_fuel = int(remaining_fuel_message.content)
         messages_to_delete.append(remaining_fuel_message)
     except asyncio.TimeoutError:
-        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        timeout = await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+        messages_to_delete.append(timeout)
+        await asyncio.sleep(3)
+        await delete_messages()  # Delete all collected messages
+        return
 
     delivery_time_prompt = await ctx.send("**Hora de entrega (formato HH:mm): **")
     messages_to_delete.append(delivery_time_prompt)
@@ -630,15 +746,6 @@ async def subir_recibo_carretera(ctx):
     except asyncio.TimeoutError:
         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
-    # weekly_activity_prompt = await ctx.send("**Actividad semanal (de 1 a 100): **")
-    # messages_to_delete.append(weekly_activity_prompt)
-    # try:
-    #     weekly_activity_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
-    #     weekly_activity = int(weekly_activity_message.content)
-    #     messages_to_delete.append(weekly_activity_message)
-    # except asyncio.TimeoutError:
-    #     return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
-
     receipt_image_prompt = await ctx.send("**Comprobante (por favor adjuntar una imagen): **")
     messages_to_delete.append(receipt_image_prompt)
     try:
@@ -647,6 +754,27 @@ async def subir_recibo_carretera(ctx):
         messages_to_delete.append(receipt_image_message)
     except asyncio.TimeoutError:
         return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
+    employee_name_prompt = await ctx.send("**Nombre del empleado (por favor mencionar con @): **")
+    messages_to_delete.append(employee_name_prompt)
+    try:
+        employee_name_message = await bot.wait_for('message', timeout=60.0, check=lambda message: message.author == ctx.author)
+        employee_name = employee_name_message.content
+        messages_to_delete.append(employee_name_message)
+
+        # Extract mentioned users
+        mentioned_users = employee_name_message.mentions
+
+        # Increment invoices for mentioned users
+        for mentioned_user in mentioned_users:
+                fetchinfo.increment_user_invoices(mentioned_user.id)
+                fetchinfo.increment_user_weekly(mentioned_user.id)
+    except asyncio.TimeoutError:
+        fetchinfo.decrease_user_invoices(mentioned_user.id)
+        fetchinfo.decrease_user_weekly(mentioned_user.id)
+        await asyncio.sleep(3)
+        return await ctx.send("Tiempo de espera agotado. Vuelve a intentarlo.")
+
 
     # Displaying all the information
     specific_channel_id = 1138166549459517512
@@ -663,6 +791,9 @@ async def subir_recibo_carretera(ctx):
         await specific_channel.send(receipt_image)
     else:
         await ctx.send("No se pudo encontrar el canal específico para publicar el recibo.")
+
+    activity_number += 1
+    fetchinfo.update_roadfix_activity(activity_number)
 
     # Call the delete_messages function at the end of the command
     await delete_messages()
