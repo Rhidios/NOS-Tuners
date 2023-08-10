@@ -11,7 +11,7 @@ import sanctioncheck
 
 intents = discord.Intents.all()
 
-TOKEN = "MTEzNDIzNTI2NzM2-WnaQfwGAMxcw"
+TOKEN = "MTEzNg.m--WnaQfwGAMxcw"
 
 intents = discord.Intents().all()
 client = discord.Client(intents = intents)
@@ -43,53 +43,18 @@ def clear_invoice_data():
     with open('invoices.json', 'w') as file:
         json.dump(data, file, indent=4)
 
-async def publish_scheduled_messages():
-    global scheduled_messages_running
-    while True:
-        current_time = datetime.datetime.utcnow().strftime("%H:%M")
-        if not scheduled_messages_running:
-            async with scheduled_messages_lock:
-                if not scheduled_messages_running:  # Double check the flag to avoid race condition
-                    scheduled_messages_running = True
-
-                    # Check if it's Saturday at 00:01
-                    if current_time == "00:01" and datetime.datetime.utcnow().weekday() == 5:  # 5 represents Saturday
-                        # Clear the contents of invoices.json
-                        clear_invoice_data()
-
-                    if current_time in messages_by_time:
-                        activity_info = messages_by_time[current_time]
-                        activity_type = activity_info["activity"]
-                        channel_id = activity_info["channel_id"]
-
-                        specific_channel = bot.get_channel(channel_id)
-                        if specific_channel:
-                            message_content = f":wrench: Actividad de **{activity_type}** disponible ahora! @everyone"
-                            await specific_channel.send(message_content)
-                        else:
-                            print(f"Couldn't find the specific channel (ID: {channel_id}) to publish the message.")
-
-                    # Check if it's Friday at 23:59
-                    if current_time == "23:59" and datetime.datetime.utcnow().weekday() == 4:  # 4 represents Friday
-                        await send_weekly_top_performers()
-
-                    # Calculate the time until the next scheduled message (1 minute interval in this example)
-                    next_time = (datetime.datetime.utcnow() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
-
-                    # Calculate the time difference between the current time and the next scheduled time
-                    time_difference = (next_time - datetime.datetime.utcnow()).total_seconds()
-
-                    # Sleep for the required time until the next scheduled message
-                    await asyncio.sleep(time_difference)
-                    scheduled_messages_running = False
-
-        # If scheduled_messages_running is True or the lock is not acquired, wait for a short duration before checking again
-        await asyncio.sleep(5)
+def clear_activity_data():
+    data = {"users": {}}
+    with open('user_activity.json', 'w') as file:
+        json.dump(data, file, indent=4)
 
 async def send_weekly_top_performers():
     # Load the data from user_activity.json and other JSON file
     user_weekly_data = fetchinfo.load_weekly_data()
     user_all_data = fetchinfo.load_invoice_data()  # Replace with the actual function to load the other JSON file
+
+    specific_channel_id = 1091815853978292227  # Replace with the actual channel ID
+    specific_channel = bot.get_channel(specific_channel_id)
 
     # Sort user_weekly_data based on activity count
     sorted_users = sorted(user_weekly_data["users"].items(), key=lambda x: x[1], reverse=True)
@@ -108,6 +73,69 @@ async def send_weekly_top_performers():
         if user:
             top_activity_users_message += f"{i+1}. {user.mention} - {activity_count} actividades\n"
 
+    # Send the complete top performers message
+    await specific_channel.send(top_performers_message)
+
+    # Send the complete top activity users message
+    await specific_channel.send(top_activity_users_message)
+    print("Trying to send top")
+
+async def scheduled_announce_messages():
+    global scheduled_messages_running
+    while True:
+        current_time = datetime.datetime.utcnow().strftime("%H:%M")
+        if not scheduled_messages_running:
+            if current_time == "23:59" and datetime.datetime.utcnow().weekday() == 4:  # 4 represents Friday
+                print("Sending top")
+                await send_weekly_top_performers()
+
+        next_time = (datetime.datetime.utcnow() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+        time_difference = (next_time - datetime.datetime.utcnow()).total_seconds()
+        await asyncio.sleep(time_difference)
+        scheduled_messages_running = False
+
+
+async def publish_scheduled_messages():
+    global scheduled_messages_running
+    while True:
+        current_time = datetime.datetime.utcnow().strftime("%H:%M")
+        if not scheduled_messages_running:
+            async with scheduled_messages_lock:
+                if not scheduled_messages_running:  # Double check the flag to avoid race condition
+                    scheduled_messages_running = True
+
+                    # Check if it's Saturday at 00:01
+                    if current_time == "00:01" and datetime.datetime.utcnow().weekday() == 5:  # 5 represents Saturday
+                        # Clear the contents of invoices.json
+                        clear_invoice_data()
+                        clear_activity_data()
+                        print("Data cleared")
+
+                    if current_time in messages_by_time:
+                        activity_info = messages_by_time[current_time]
+                        activity_type = activity_info["activity"]
+                        channel_id = activity_info["channel_id"]
+
+                        specific_channel = bot.get_channel(channel_id)
+                        if specific_channel:
+                            message_content = f":wrench: Actividad de **{activity_type}** disponible ahora! @everyone"
+                            await specific_channel.send(message_content)
+                        else:
+                            print(f"Couldn't find the specific channel (ID: {channel_id}) to publish the message.")
+
+                    # Calculate the time until the next scheduled message (1 minute interval in this example)
+                    next_time = (datetime.datetime.utcnow() + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
+
+                    # Calculate the time difference between the current time and the next scheduled time
+                    time_difference = (next_time - datetime.datetime.utcnow()).total_seconds()
+
+                    # Sleep for the required time until the next scheduled message
+                    await asyncio.sleep(time_difference)
+                    scheduled_messages_running = False
+
+        # If scheduled_messages_running is True or the lock is not acquired, wait for a short duration before checking again
+        await asyncio.sleep(5)
+
 async def reset_weekly_data():
         while True:
             now = datetime.datetime.now()
@@ -125,8 +153,11 @@ async def on_ready():
     # Start the scheduled messages publishing task
     bot.loop.create_task(publish_scheduled_messages())
 
+    bot.loop.create_task(scheduled_announce_messages())
+
     # Schedule the weekly data reset task
     bot.loop.create_task(reset_weekly_data())
+
 
 @bot.event
 async def on_member_join(member):
@@ -327,6 +358,12 @@ async def ver_recibos(ctx, *, user_name=None):
 async def upload_factura(ctx):
     user = ctx.author
     prompt_responses = []
+    await ctx.author.send("Sube la imagen del auto antes de la reparacion (adjunta una imagen):")
+    try:
+        after_image = await bot.wait_for('message', timeout=300.0, check=lambda message: message.author == ctx.author and message.attachments)
+        after_image = after_image.attachments[0].url
+    except asyncio.TimeoutError:
+        return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
     await ctx.author.send("Sube la imagen del auto luego de la reparacion (adjunta una imagen):")
     try:
@@ -342,18 +379,21 @@ async def upload_factura(ctx):
     except asyncio.TimeoutError:
         return await ctx.author.send("Tiempo de espera agotado. Vuelve a intentarlo.")
 
-    fetchinfo.increment_user_invoices(user.id)
-
-    await ctx.send(f"**Numero de factura de {user.mention}: {fetchinfo.get_user_invoices(user.id)}**\n"
-                   "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
-                   f"**Matricula del auto: **{car_plate}\n")
-    await ctx.send("**Imagen despues de la reparacion:**")
-    await ctx.send(after_image)
+    specific_channel_id = 1139003062984376390
+    specific_channel = bot.get_channel(specific_channel_id)
+    if specific_channel:
+        await specific_channel.send(f"**Numero de factura de {user.mention}: {fetchinfo.get_user_invoices(user.id)}**\n"
+                    "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
+                    f"**Matricula del auto: **{car_plate}\n")
+        await specific_channel.send("**Imagen despues de la reparacion:**")
+        await specific_channel.send(after_image)
 
     # Delete the command message and prompt messages after the command is done
     # prompt_responses.append(before_image)
     prompt_responses.append(after_image)
     prompt_responses.append(car_plate)
+
+    fetchinfo.increment_user_invoices(user.id)
 
     try:
         await ctx.message.delete()
@@ -649,6 +689,7 @@ async def subir_recibo_industrial(ctx):
     # Displaying all the information
     specific_channel_id = 1138166569210491032
     specific_channel = bot.get_channel(specific_channel_id)
+    activity_number += 1
     if specific_channel:
         await specific_channel.send(f"**/ Reparacion Industrial N°: {activity_number}**\n"
                                     "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
@@ -662,7 +703,7 @@ async def subir_recibo_industrial(ctx):
     else:
         await ctx.send("No se pudo encontrar el canal específico para publicar el recibo.")
 
-    activity_number += 1
+
     fetchinfo.update_industrial_activity(activity_number)
 
     # Call the delete_messages function at the end of the command
@@ -779,6 +820,7 @@ async def subir_recibo_carretera(ctx):
     # Displaying all the information
     specific_channel_id = 1138166549459517512
     specific_channel = bot.get_channel(specific_channel_id)
+    activity_number += 1
     if specific_channel:
         await specific_channel.send(f"**/ Reparacion en Carretera N°: {activity_number}**\n"
                                     "**━━━━━━━━━━━━━━━━━━━━━━━━━━━━━**\n"
@@ -792,7 +834,6 @@ async def subir_recibo_carretera(ctx):
     else:
         await ctx.send("No se pudo encontrar el canal específico para publicar el recibo.")
 
-    activity_number += 1
     fetchinfo.update_roadfix_activity(activity_number)
 
     # Call the delete_messages function at the end of the command
